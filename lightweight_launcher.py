@@ -158,7 +158,8 @@ def main():
         print("🔧 First time setup required...")
         if not install_app():
             print("❌ Installation failed")
-            input("Press Enter to exit...")
+            print("⚠️ Setup failed. Please check your internet connection and try again.")
+            time.sleep(3)  # Give user time to read the message
             return
     else:
         print("✅ Application already installed")
@@ -171,10 +172,8 @@ def main():
         print("⚠️  Ollama not found!")
         print("📥 Please install Ollama from: https://ollama.ai")
         print("🔧 Then run: ollama pull llama3.2:1b")
-        
-        response = input("Continue anyway? (y/N): ")
-        if response.lower() != 'y':
-            return
+        print("🚀 Starting app anyway - you can install Ollama later")
+        time.sleep(2)  # Give user time to read the message
     
     # Start the app
     start_app()
