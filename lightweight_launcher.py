@@ -125,58 +125,157 @@ def start_app():
     
     if not python_exe.exists() or not app_script.exists():
         print("❌ Installation files missing. Please reinstall.")
+        time.sleep(3)
         return False
     
-    # Start Streamlit app
-    cmd = [str(python_exe), "-m", "streamlit", "run", str(app_script), "--server.headless", "true"]
+    # Check if port 8501 is available
+    import socket
+    def is_port_available(port):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(('localhost', port))
+                return True
+            except:
+                return False
+    
+    port = 8501
+    if not is_port_available(port):
+        print("⚠️  Port 8501 is already in use. Trying port 8502...")
+        port = 8502
+        if not is_port_available(port):
+            print("❌ Ports 8501 and 8502 are busy. Please close other Streamlit apps.")
+            time.sleep(3)
+            return False
+    
+    # Start Streamlit app with better configuration
+    cmd = [
+        str(python_exe), "-m", "streamlit", "run", str(app_script),
+        "--server.headless", "true",
+        "--server.address", "localhost",
+        "--server.port", str(port),
+        "--global.developmentMode", "false",
+        "--server.enableCORS", "false",
+        "--server.enableXsrfProtection", "false"
+    ]
     
     try:
         print("🚀 Starting PDF Chat...")
-        process = subprocess.Popen(cmd, cwd=str(INSTALL_DIR))
+        print(f"📡 Using port: {port}")
         
-        # Wait a moment then open browser
-        time.sleep(3)
-        webbrowser.open("http://localhost:8501")
+        # Start process with output capture
+        process = subprocess.Popen(
+            cmd, 
+            cwd=str(INSTALL_DIR),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+        )
         
-        print("🌐 PDF Chat is running at: http://localhost:8501")
-        print("📝 Close this window to stop the application")
+        # Wait for Streamlit to start properly
+        print("⏳ Waiting for server to start...")
+        max_wait = 30  # Wait up to 30 seconds
+        for i in range(max_wait):
+            try:
+                # Check if process is still running
+                if process.poll() is not None:
+                    stdout, stderr = process.communicate()
+                    print(f"❌ Process failed to start:")
+                    print(f"Error: {stderr[:500]}")
+                    time.sleep(3)
+                    return False
+                
+                # Try to connect to the server
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.settimeout(1)
+                    if s.connect_ex(('localhost', port)) == 0:
+                        print("✅ Server is ready!")
+                        break
+                time.sleep(1)
+                if i % 5 == 0:
+                    print(f"⏳ Still waiting... ({i+1}/{max_wait})")
+            except:
+                time.sleep(1)
+        else:
+            print("❌ Server failed to start within 30 seconds")
+            process.terminate()
+            time.sleep(3)
+            return False
+        
+        # Open browser
+        url = f"http://localhost:{port}"
+        print(f"🌐 Opening browser: {url}")
+        webbrowser.open(url)
+        
+        print("✅ PDF Chat is running!")
+        print(f"🌐 Access at: {url}")
+        print("🔄 Keep this window open to keep the app running")
+        print("❌ Close this window to stop the app")
         
         # Wait for process to finish
-        process.wait()
+        try:
+            process.wait()
+        except KeyboardInterrupt:
+            print("\n👋 Shutting down...")
+            process.terminate()
+            process.wait()
+        
+        return True
         
     except Exception as e:
         print(f"❌ Failed to start app: {e}")
+        time.sleep(3)
         return False
     
     return True
 
 def main():
     """Main launcher function"""
-    show_console_message("Launcher")
-    
-    if not check_installation():
-        print("🔧 First time setup required...")
-        if not install_app():
-            print("❌ Installation failed")
-            print("⚠️ Setup failed. Please check your internet connection and try again.")
-            time.sleep(3)  # Give user time to read the message
-            return
-    else:
-        print("✅ Application already installed")
-    
-    # Check Ollama
     try:
-        subprocess.run(["ollama", "list"], capture_output=True, check=True)
-        print("✅ Ollama detected")
-    except:
-        print("⚠️  Ollama not found!")
-        print("📥 Please install Ollama from: https://ollama.ai")
-        print("🔧 Then run: ollama pull llama3.2:1b")
-        print("🚀 Starting app anyway - you can install Ollama later")
-        time.sleep(2)  # Give user time to read the message
-    
-    # Start the app
-    start_app()
+        show_console_message("Launcher")
+        
+        if not check_installation():
+            print("🔧 First time setup required...")
+            if not install_app():
+                print("❌ Installation failed")
+                print("⚠️ Setup failed. Please check your internet connection and try again.")
+                print("🔧 Troubleshooting:")
+                print("   - Check internet connection")
+                print("   - Try running as administrator")
+                print("   - Temporarily disable antivirus")
+                time.sleep(5)
+                return
+        else:
+            print("✅ Application already installed")
+        
+        # Check Ollama
+        ollama_available = False
+        try:
+            result = subprocess.run(["ollama", "list"], capture_output=True, check=True, timeout=5)
+            print("✅ Ollama detected")
+            ollama_available = True
+        except:
+            print("⚠️  Ollama not found!")
+            print("📥 Please install Ollama from: https://ollama.ai")
+            print("🔧 Then run: ollama pull llama3.2:1b")
+            print("🚀 Starting app anyway - you'll need Ollama for AI features")
+            time.sleep(2)
+        
+        # Start the app
+        if not start_app():
+            print("❌ Failed to start the application")
+            print("🔧 Troubleshooting:")
+            print("   - Make sure no other Streamlit apps are running")
+            print("   - Try restarting your computer")
+            print("   - Check Windows Firewall settings")
+            if not ollama_available:
+                print("   - Install Ollama for full functionality")
+            time.sleep(5)
+            
+    except Exception as e:
+        print(f"❌ Unexpected error: {e}")
+        print("🔧 Please try running as administrator or contact support")
+        time.sleep(5)
 
 if __name__ == "__main__":
     main()
