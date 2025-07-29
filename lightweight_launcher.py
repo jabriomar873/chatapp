@@ -91,22 +91,66 @@ def install_app():
                 for subitem in item.iterdir():
                     subitem.rename(target_dir / subitem.name)
     
-    # Install pip packages
+    # Setup pip for embedded Python
     python_exe = python_dir / "python.exe"
-    pip_install_cmd = [
-        str(python_exe), "-m", "pip", "install",
-        "streamlit", "langchain", "langchain-community", "langchain-ollama",
-        "pypdf", "pymupdf", "pytesseract", "pillow", "faiss-cpu",
-        "scikit-learn", "numpy", "python-dotenv"
+    get_pip_url = "https://bootstrap.pypa.io/get-pip.py"
+    get_pip_file = INSTALL_DIR / "get-pip.py"
+    
+    print("🔧 Setting up pip...")
+    try:
+        # Download get-pip.py
+        if not download_file(get_pip_url, get_pip_file, "pip installer"):
+            return False
+        
+        # Install pip
+        subprocess.run([str(python_exe), str(get_pip_file)], check=True, capture_output=True)
+        print("✅ Pip installed successfully")
+        
+        # Remove get-pip.py
+        get_pip_file.unlink(missing_ok=True)
+        
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Failed to install pip: {e}")
+        return False
+    
+    # Install packages one by one for better error handling
+    packages = [
+        "streamlit",
+        "langchain", 
+        "langchain-community", 
+        "langchain-ollama",
+        "pypdf", 
+        "pymupdf", 
+        "pytesseract", 
+        "pillow", 
+        "faiss-cpu",
+        "scikit-learn", 
+        "numpy", 
+        "python-dotenv"
     ]
     
     print("📦 Installing Python packages...")
-    try:
-        subprocess.run(pip_install_cmd, check=True, capture_output=True)
-        print("✅ Packages installed successfully")
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Failed to install packages: {e}")
-        return False
+    for package in packages:
+        try:
+            print(f"  Installing {package}...")
+            cmd = [str(python_exe), "-m", "pip", "install", package, "--no-warn-script-location"]
+            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+            print(f"  ✅ {package} installed")
+        except subprocess.CalledProcessError as e:
+            print(f"  ❌ Failed to install {package}: {e}")
+            print(f"  Error output: {e.stderr if hasattr(e, 'stderr') else 'No error details'}")
+            # Continue with other packages
+    
+    # Verify critical packages
+    print("🔍 Verifying installation...")
+    critical_packages = ["streamlit", "langchain"]
+    for package in critical_packages:
+        try:
+            cmd = [str(python_exe), "-c", f"import {package}; print(f'{package} OK')"]
+            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+            print(f"  ✅ {package} verified")
+        except subprocess.CalledProcessError:
+            print(f"  ❌ {package} failed verification")
     
     # Cleanup
     python_zip.unlink(missing_ok=True)
